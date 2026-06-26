@@ -1,0 +1,13 @@
+{
+  "name": "promatch-recommendation-algorithm",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "demo": "node src/demo.js",
+    "test": "node --test",
+    "check": "node --check src/recommendationEngine.js && node --check src/demo.js"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

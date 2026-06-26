@@ -1,0 +1,41 @@
+services:
+  - type: web
+    name: promatch-api
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - fromGroup: promatch-secrets
+    healthCheckPath: /healthz
+    autoDeploy: true
+
+  - type: worker
+    name: promatch-worker
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m app.worker
+    envVars:
+      - fromGroup: promatch-secrets
+    autoDeploy: true
+
+envVarGroups:
+  - name: promatch-secrets
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: SENTRY_DSN
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: APP_ENV
+        value: production

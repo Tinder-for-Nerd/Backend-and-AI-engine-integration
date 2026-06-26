@@ -1,0 +1,10 @@
+# Streamlit testing platform dependencies
+streamlit>=1.32.0
+httpx>=0.27.0
+python-dotenv>=1.0.0
+PyPDF2>=3.0.0
+
+# Subproject deps (install separately in each venv, or use one shared venv):
+# TFN_backend/requirements.txt
+# Auth-Security/requirements.txt
+# event-algorithm/requirements.txt

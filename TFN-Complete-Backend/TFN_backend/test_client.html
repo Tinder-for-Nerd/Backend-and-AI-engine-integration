@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ProMatch — API Test Client</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { background:#0f1117; color:#e2e8f0; font-family:'Inter',system-ui,sans-serif; }
+  .card { background:#1a1d27; border:1px solid #2d3148; border-radius:12px; }
+  .btn { padding:6px 14px; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; transition:opacity .15s; }
+  .btn:hover { opacity:.85; }
+  .btn-primary { background:#6366f1; color:#fff; }
+  .btn-success { background:#10b981; color:#fff; }
+  .btn-danger  { background:#ef4444; color:#fff; }
+  .btn-ghost   { background:#2d3148; color:#94a3b8; }
+  input, textarea, select {
+    background:#0f1117; border:1px solid #2d3148; border-radius:8px;
+    color:#e2e8f0; padding:6px 10px; font-size:13px; width:100%;
+    outline:none; transition:border-color .15s;
+  }
+  input:focus, textarea:focus { border-color:#6366f1; }
+  .tag { display:inline-block; background:#2d3148; color:#94a3b8; padding:2px 8px; border-radius:9999px; font-size:11px; }
+  .status-dot { width:8px; height:8px; border-radius:50%; display:inline-block; }
+  .ok   { background:#10b981; }
+  .err  { background:#ef4444; }
+  .warn { background:#f59e0b; }
+  pre { background:#0a0c14; border:1px solid #2d3148; border-radius:8px; padding:10px; font-size:11px; overflow:auto; max-height:220px; white-space:pre-wrap; word-break:break-all; }
+  .tab-btn { padding:6px 16px; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; color:#64748b; }
+  .tab-btn.active { background:#6366f1; color:#fff; }
+  .section-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:#475569; margin-bottom:8px; }
+  .profile-card { border:1px solid #2d3148; border-radius:10px; padding:12px; background:#13151f; }
+  .intent-badge { padding:2px 8px; border-radius:9999px; font-size:11px; font-weight:600; background:#312e81; color:#a5b4fc; }
+  ::-webkit-scrollbar { width:5px; height:5px; }
+  ::-webkit-scrollbar-track { background:#0f1117; }
+  ::-webkit-scrollbar-thumb { background:#2d3148; border-radius:9999px; }
+</style>
+</head>
+<body class="min-h-screen p-4">
+
+<div class="max-w-7xl mx-auto">
+
+  <!-- Header -->
+  <div class="flex items-center justify-between mb-6">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold text-lg">P</div>
+      <div>
+        <h1 class="text-lg font-bold text-white">ProMatch API Test Client</h1>
+        <p class="text-xs text-slate-500">Interactive backend tester</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <div class="flex items-center gap-2 text-xs text-slate-400">
+        <span class="status-dot" id="server-dot"></span>
+        <span id="server-status">checking…</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <label class="text-xs text-slate-500">Base URL</label>
+        <input id="base-url" value="http://localhost:8002" style="width:200px" />
+      </div>
+      <button class="btn btn-ghost" onclick="checkHealth()">⟳ Refresh</button>
+    </div>
+  </div>
+
+  <!-- Main 3-column layout -->
+  <div class="grid grid-cols-12 gap-4">
+
+    <!-- ── Col 1+2: User Sessions ──────────────────────────────────── -->
+    <div class="col-span-8 grid grid-cols-2 gap-4">
+
+      <!-- User A -->
+      <div id="user-a-panel" class="space-y-3">
+        <div class="card p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="text-sm font-bold text-indigo-400">👤 User A</span>
+            <span id="user-a-badge" class="tag">no token</span>
+          </div>
+          <div>
+            <div class="section-title">JWT Token</div>
+            <textarea id="user-a-token" rows="3" placeholder="Paste JWT here…" oninput="onTokenChange('a')"></textarea>
+          </div>
+          <button class="btn btn-primary w-full" onclick="loadMe('a')">Load My Profile</button>
+          <div id="user-a-profile" class="hidden profile-card space-y-1 text-xs">
+            <div class="font-bold text-white" id="user-a-name"></div>
+            <div class="text-slate-400" id="user-a-username"></div>
+            <div class="text-slate-500 text-[11px]" id="user-a-id"></div>
+            <div id="user-a-intents" class="flex flex-wrap gap-1 mt-1"></div>
+          </div>
+        </div>
+
+        <!-- Discovery -->
+        <div class="card p-4 space-y-3">
+          <div class="section-title">Discovery Feed</div>
+          <div class="flex gap-2">
+            <select id="user-a-intent-filter" style="flex:1">
+              <option value="">All intents</option>
+              <option value="collaboration">collaboration</option>
+              <option value="networking">networking</option>
+              <option value="mentorship_mentor">mentorship (mentor)</option>
+              <option value="mentorship_mentee">mentorship (mentee)</option>
+              <option value="cofounder">cofounder</option>
+              <option value="dating">dating</option>
+            </select>
+            <button class="btn btn-primary" onclick="loadFeed('a')">Load Feed</button>
+          </div>
+          <div id="user-a-feed" class="space-y-2"></div>
+        </div>
+
+        <!-- Matches -->
+        <div class="card p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="section-title">Matches</div>
+            <button class="btn btn-ghost text-xs" onclick="loadMatches('a')">Load</button>
+          </div>
+          <div id="user-a-matches" class="space-y-2"></div>
+        </div>
+      </div>
+
+      <!-- User B -->
+      <div id="user-b-panel" class="space-y-3">
+        <div class="card p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="text-sm font-bold text-emerald-400">👤 User B</span>
+            <span id="user-b-badge" class="tag">no token</span>
+          </div>
+          <div>
+            <div class="section-title">JWT Token</div>
+            <textarea id="user-b-token" rows="3" placeholder="Paste JWT here…" oninput="onTokenChange('b')"></textarea>
+          </div>
+          <button class="btn btn-success w-full" onclick="loadMe('b')">Load My Profile</button>
+          <div id="user-b-profile" class="hidden profile-card space-y-1 text-xs">
+            <div class="font-bold text-white" id="user-b-name"></div>
+            <div class="text-slate-400" id="user-b-username"></div>
+            <div class="text-slate-500 text-[11px]" id="user-b-id"></div>
+            <div id="user-b-intents" class="flex flex-wrap gap-1 mt-1"></div>
+          </div>
+        </div>
+
+        <!-- Discovery -->
+        <div class="card p-4 space-y-3">
+          <div class="section-title">Discovery Feed</div>
+          <div class="flex gap-2">
+            <select id="user-b-intent-filter" style="flex:1">
+              <option value="">All intents</option>
+              <option value="collaboration">collaboration</option>
+              <option value="networking">networking</option>
+              <option value="mentorship_mentor">mentorship (mentor)</option>
+              <option value="mentorship_mentee">mentorship (mentee)</option>
+              <option value="cofounder">cofounder</option>
+              <option value="dating">dating</option>
+            </select>
+            <button class="btn btn-success" onclick="loadFeed('b')">Load Feed</button>
+          </div>
+          <div id="user-b-feed" class="space-y-2"></div>
+        </div>
+
+        <!-- Matches -->
+        <div class="card p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="section-title">Matches</div>
+            <button class="btn btn-ghost text-xs" onclick="loadMatches('b')">Load</button>
+          </div>
+          <div id="user-b-matches" class="space-y-2"></div>
+        </div>
+      </div>
+
+    </div><!-- /col 8 -->
+
+    <!-- ── Col 3: Tools + Log ──────────────────────────────────────── -->
+    <div class="col-span-4 space-y-4">
+
+      <!-- Request Builder -->
+      <div class="card p-4 space-y-3">
+        <div class="section-title">Custom Request</div>
+        <div class="flex gap-2">
+          <select id="req-method" style="width:90px">
+            <option>GET</option><option>POST</option><option>PATCH</option><option>DELETE</option>
+          </select>
+          <input id="req-path" placeholder="/api/v1/me" style="flex:1" />
+        </div>
+        <div class="flex gap-2">
+          <select id="req-user" style="width:90px">
+            <option value="a">User A</option>
+            <option value="b">User B</option>
+            <option value="">No auth</option>
+          </select>
+          <button class="btn btn-primary flex-1" onclick="sendCustom()">Send ↗</button>
+        </div>
+        <textarea id="req-body" rows="4" placeholder='{"key":"value"}  ← body for POST/PATCH'></textarea>
+        <pre id="req-response" class="text-green-300 text-[11px]">Response appears here…</pre>
+      </div>
+
+      <!-- Mutual Like Test -->
+      <div class="card p-4 space-y-3">
+        <div class="section-title">⚡ Mutual Like → Match Test</div>
+        <p class="text-xs text-slate-500">A likes B, then B likes A. Both need tokens loaded.</p>
+        <div>
+          <label class="text-xs text-slate-500 block mb-1">Intent</label>
+          <select id="mutual-intent">
+            <option value="collaboration">collaboration</option>
+            <option value="networking">networking</option>
+            <option value="mentorship_mentor">mentorship_mentor</option>
+            <option value="cofounder">cofounder</option>
+          </select>
+        </div>
+        <button class="btn btn-primary w-full" onclick="mutualLikeTest()">Run Mutual Like Test</button>
+        <pre id="mutual-result" class="text-[11px] text-yellow-300">Result appears here…</pre>
+      </div>
+
+      <!-- Health -->
+      <div class="card p-4 space-y-2">
+        <div class="section-title">Health</div>
+        <div class="flex items-center justify-between text-xs">
+          <span class="text-slate-400">API</span>
+          <span id="health-api" class="tag">–</span>
+        </div>
+        <div class="flex items-center justify-between text-xs">
+          <span class="text-slate-400">Database</span>
+          <span id="health-db" class="tag">–</span>
+        </div>
+        <div class="flex items-center justify-between text-xs">
+          <span class="text-slate-400">Redis</span>
+          <span id="health-redis" class="tag">–</span>
+        </div>
+        <div class="flex items-center justify-between text-xs">
+          <span class="text-slate-400">Git SHA</span>
+          <span id="health-sha" class="tag">–</span>
+        </div>
+      </div>
+
+      <!-- Interests lookup -->
+      <div class="card p-4 space-y-3">
+        <div class="section-title">Interests (seed data)</div>
+        <button class="btn btn-ghost w-full text-xs" onclick="loadInterests()">Load Interests</button>
+        <div id="interests-list" class="flex flex-wrap gap-1"></div>
+      </div>
+
+      <!-- Request Log -->
+      <div class="card p-4 space-y-2">
+        <div class="flex items-center justify-between">
+          <div class="section-title">Request Log</div>
+          <button class="btn btn-ghost text-xs" onclick="clearLog()">Clear</button>
+        </div>
+        <div id="log" class="space-y-1 max-h-64 overflow-y-auto"></div>
+      </div>
+
+    </div><!-- /col 4 -->
+
+  </div><!-- /grid -->
+</div><!-- /container -->
+
+<!-- Message Modal -->
+<div id="msg-modal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+  <div class="card p-5 w-[480px] space-y-3">
+    <div class="flex items-center justify-between">
+      <span class="font-bold text-white">Messages — <span id="modal-match-id" class="text-indigo-400 text-sm"></span></span>
+      <button class="btn btn-ghost text-xs" onclick="closeModal()">✕ Close</button>
+    </div>
+    <div id="modal-messages" class="space-y-2 max-h-60 overflow-y-auto"></div>
+    <div class="flex gap-2">
+      <input id="modal-msg-input" placeholder="Type a message…" onkeydown="if(event.key==='Enter')sendMsg()" />
+      <button class="btn btn-primary" onclick="sendMsg()">Send</button>
+    </div>
+    <div class="text-xs text-slate-500">Sending as: <span id="modal-sender" class="text-white"></span></div>
+  </div>
+</div>
+
+<script>
+// ── State ────────────────────────────────────────────────────────────
+const S = {
+  tokens: { a: '', b: '' },
+  profiles: { a: null, b: null },
+  activeModal: { matchId: null, user: null },
+};
+
+const base = () => document.getElementById('base-url').value.replace(/\/$/, '');
+
+// ── Fetch helper ──────────────────────────────────────────────────────
+async function api(method, path, { token, body } = {}) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const opts = { method, headers };
+  if (body) opts.body = JSON.stringify(body);
+  const url = base() + path;
+  const t0 = Date.now();
+  let res, data;
+  try {
+    res = await fetch(url, opts);
+    data = await res.json();
+  } catch (e) {
+    logEntry(method, path, 0, `Network error: ${e.message}`, 'err');
+    return { ok: false, status: 0, data: null };
+  }
+  const ms = Date.now() - t0;
+  const ok = res.status >= 200 && res.status < 300;
+  logEntry(method, path, res.status, null, ok ? 'ok' : 'err', ms);
+  return { ok, status: res.status, data };
+}
+
+// ── Log ───────────────────────────────────────────────────────────────
+function logEntry(method, path, status, extra, level, ms) {
+  const el = document.getElementById('log');
+  const colors = { ok: 'text-emerald-400', err: 'text-red-400', warn: 'text-yellow-400' };
+  const row = document.createElement('div');
+  row.className = `text-[11px] flex gap-2 ${colors[level] || 'text-slate-400'}`;
+  row.innerHTML = `<span class="text-slate-600 font-mono">${new Date().toLocaleTimeString()}</span>
+    <span class="font-bold">${method}</span>
+    <span class="text-slate-300">${path}</span>
+    <span class="ml-auto font-mono">${status} ${ms ? ms+'ms' : ''}</span>`;
+  el.prepend(row);
+}
+function clearLog() { document.getElementById('log').innerHTML = ''; }
+
+// ── Health ────────────────────────────────────────────────────────────
+async function checkHealth() {
+  const { ok, data: h } = await api('GET', '/healthz');
+  const dot = document.getElementById('server-dot');
+  const st  = document.getElementById('server-status');
+  if (ok) { dot.className = 'status-dot ok'; st.textContent = 'online'; }
+  else    { dot.className = 'status-dot err'; st.textContent = 'offline'; }
+  document.getElementById('health-api').textContent = ok ? '✓ ok' : '✗ error';
+  document.getElementById('health-api').className = ok ? 'tag text-emerald-400' : 'tag text-red-400';
+
+  const { data: rz } = await api('GET', '/readyz');
+  if (rz?.checks) {
+    ['db','redis'].forEach(k => {
+      const el = document.getElementById(`health-${k}`);
+      const v = rz.checks[k];
+      el.textContent = v === 'ok' ? '✓ ok' : '✗ ' + v;
+      el.className = v === 'ok' ? 'tag text-emerald-400' : 'tag text-red-400';
+    });
+  }
+  const { data: ver } = await api('GET', '/version');
+  if (ver?.git_sha) document.getElementById('health-sha').textContent = ver.git_sha;
+}
+
+// ── Auth / Profile ─────────────────────────────────────────────────────
+function onTokenChange(u) {
+  const t = document.getElementById(`user-${u}-token`).value.trim();
+  S.tokens[u] = t;
+  document.getElementById(`user-${u}-badge`).textContent = t ? 'token set' : 'no token';
+}
+
+async function loadMe(u) {
+  const token = S.tokens[u];
+  if (!token) { alert(`Paste a JWT for User ${u.toUpperCase()} first`); return; }
+  const { ok, data } = await api('GET', '/api/v1/me', { token });
+  if (!ok) { alert(`Error: ${JSON.stringify(data?.detail || data)}`); return; }
+  S.profiles[u] = data;
+  showProfile(u, data);
+}
+
+function showProfile(u, p) {
+  const el = id => document.getElementById(`user-${u}-${id}`);
+  el('profile').classList.remove('hidden');
+  el('name').textContent = p.display_name || p.username || '(no name)';
+  el('username').textContent = '@' + (p.username || '?');
+  el('id').textContent = p.id;
+  const intentsEl = el('intents');
+  intentsEl.innerHTML = '';
+  (p.looking_for || []).forEach(i => {
+    const s = document.createElement('span');
+    s.className = 'intent-badge';
+    s.textContent = i;
+    intentsEl.appendChild(s);
+  });
+}
+
+// ── Discovery Feed ────────────────────────────────────────────────────
+async function loadFeed(u) {
+  const token = S.tokens[u];
+  if (!token) { alert('Load profile first'); return; }
+  const intent = document.getElementById(`user-${u}-intent-filter`).value;
+  const qs = intent ? `?looking_for=${intent}` : '';
+  const { ok, data } = await api('GET', `/api/v1/discovery/feed${qs}`, { token });
+  const container = document.getElementById(`user-${u}-feed`);
+  if (!ok) { container.innerHTML = `<div class="text-red-400 text-xs">${JSON.stringify(data)}</div>`; return; }
+  const items = data.items || [];
+  if (!items.length) { container.innerHTML = '<div class="text-slate-500 text-xs">No profiles in feed</div>'; return; }
+  container.innerHTML = '';
+  items.forEach(item => {
+    const p = item.profile;
+    const otherUser = u === 'a' ? 'b' : 'a';
+    const el = document.createElement('div');
+    el.className = 'profile-card text-xs space-y-1';
+    el.innerHTML = `
+      <div class="flex items-start justify-between">
+        <div>
+          <div class="font-bold text-white">${p.display_name || p.username || '?'}</div>
+          <div class="text-slate-400">@${p.username || '?'}</div>
+        </div>
+        <div class="text-slate-500 font-mono text-[10px]">score ${item.score?.toFixed(3) || '–'}</div>
+      </div>
+      ${p.headline ? `<div class="text-slate-400 italic">${p.headline}</div>` : ''}
+      <div class="flex flex-wrap gap-1">${(p.looking_for||[]).map(i=>`<span class="intent-badge">${i}</span>`).join('')}</div>
+      <div class="flex gap-1 pt-1">
+        <button class="btn btn-primary flex-1 text-xs" onclick="sendLike('${u}','${p.id}')">👍 Like</button>
+        <button class="btn btn-ghost flex-1 text-xs" onclick="sendPass('${u}','${p.id}')">👎 Pass</button>
+        ${S.tokens[otherUser] ? `<button class="btn btn-success text-xs" title="Set as User ${otherUser.toUpperCase()}" onclick="setAsOtherUser('${otherUser}','${p.id}','${(p.display_name||p.username||'').replace(/'/g,"\\'")}')">→ ${otherUser.toUpperCase()}</button>` : ''}
+      </div>`;
+    container.appendChild(el);
+  });
+}
+
+// Set a profile ID as the target for the other user (quick mutual-like setup)
+function setAsOtherUser(u, profileId, name) {
+  alert(`Profile "${name}" (${profileId}) noted. Load User ${u.toUpperCase()} with a JWT that corresponds to this profile to enable mutual-like test.`);
+}
+
+// ── Likes & Passes ────────────────────────────────────────────────────
+async function sendLike(u, likeeId) {
+  const token = S.tokens[u];
+  const intent = document.getElementById(`user-${u}-intent-filter`).value || 'collaboration';
+  const { ok, data } = await api('POST', '/api/v1/likes', {
+    token,
+    body: { likee_id: likeeId, intents: [intent] }
+  });
+  if (!ok) {
+    const msg = data?.detail?.message || data?.detail || JSON.stringify(data);
+    alert(`Like failed: ${msg}`);
+    return;
+  }
+  const matchLine = data.match ? `\n🎉 MATCH created! ID: ${data.match.id}` : '\nNo match yet (waiting for reciprocal like)';
+  alert(`Like sent!${matchLine}`);
+  loadFeed(u);
+}
+
+async function sendPass(u, likeeId) {
+  const token = S.tokens[u];
+  const { ok } = await api('POST', '/api/v1/passes', { token, body: { likee_id: likeeId } });
+  if (ok) loadFeed(u);
+}
+
+// ── Matches ───────────────────────────────────────────────────────────
+async function loadMatches(u) {
+  const token = S.tokens[u];
+  if (!token) { alert('No token for User ' + u.toUpperCase()); return; }
+  const { ok, data } = await api('GET', '/api/v1/matches', { token });
+  const container = document.getElementById(`user-${u}-matches`);
+  if (!ok) { container.innerHTML = `<div class="text-red-400 text-xs">${JSON.stringify(data)}</div>`; return; }
+  if (!data.length) { container.innerHTML = '<div class="text-slate-500 text-xs">No matches yet</div>'; return; }
+  container.innerHTML = '';
+  data.forEach(m => {
+    const myId = S.profiles[u]?.id;
+    const otherId = m.user_a_id === myId ? m.user_b_id : m.user_a_id;
+    const el = document.createElement('div');
+    el.className = 'profile-card text-xs space-y-1';
+    el.innerHTML = `
+      <div class="flex items-center justify-between">
+        <div class="font-bold text-white truncate">Match <span class="text-indigo-400 font-mono text-[10px]">${m.id.slice(0,8)}…</span></div>
+        <span class="tag">${m.status}</span>
+      </div>
+      <div class="text-slate-400">Other: <span class="font-mono text-[10px]">${otherId?.slice(0,8)}…</span></div>
+      <div class="flex flex-wrap gap-1">${(m.shared_intents||[]).map(i=>`<span class="intent-badge">${i}</span>`).join('')}</div>
+      <div class="flex gap-1 pt-1">
+        <button class="btn btn-ghost flex-1 text-xs" onclick="openMessages('${u}','${m.id}')">💬 Messages</button>
+        <button class="btn btn-danger text-xs" onclick="closeMatch('${u}','${m.id}','${myId===m.user_a_id?'a':'b'}')">Close</button>
+      </div>`;
+    container.appendChild(el);
+  });
+}
+
+async function closeMatch(u, matchId, side) {
+  const token = S.tokens[u];
+  const status = side === 'a' ? 'closed_by_a' : 'closed_by_b';
+  const { ok, data } = await api('PATCH', `/api/v1/matches/${matchId}`, { token, body: { status } });
+  if (ok) { alert('Match closed.'); loadMatches(u); }
+  else alert(`Error: ${JSON.stringify(data?.detail || data)}`);
+}
+
+// ── Messages ───────────────────────────────────────────────────────────
+function openMessages(u, matchId) {
+  S.activeModal = { matchId, user: u };
+  document.getElementById('modal-match-id').textContent = matchId.slice(0,12) + '…';
+  document.getElementById('modal-sender').textContent = `User ${u.toUpperCase()} (${S.profiles[u]?.username || '?'})`;
+  document.getElementById('msg-modal').classList.remove('hidden');
+  fetchMessages(u, matchId);
+}
+
+async function fetchMessages(u, matchId) {
+  const token = S.tokens[u];
+  const { ok, data } = await api('GET', `/api/v1/matches/${matchId}/messages`, { token });
+  const container = document.getElementById('modal-messages');
+  if (!ok) { container.innerHTML = `<div class="text-red-400 text-xs">${JSON.stringify(data)}</div>`; return; }
+  if (!data.length) { container.innerHTML = '<div class="text-slate-500 text-xs">No messages yet</div>'; return; }
+  const myId = S.profiles[u]?.id;
+  container.innerHTML = '';
+  [...data].reverse().forEach(msg => {
+    const mine = msg.sender_id === myId;
+    const el = document.createElement('div');
+    el.className = `flex ${mine ? 'justify-end' : 'justify-start'}`;
+    el.innerHTML = `<div class="max-w-xs px-3 py-2 rounded-xl text-xs ${mine ? 'bg-indigo-600 text-white' : 'bg-slate-700 text-slate-200'}">
+      ${msg.is_deleted ? '<em class="text-slate-400">deleted</em>' : msg.content || ''}
+      <div class="text-[10px] opacity-60 mt-0.5">${new Date(msg.created_at).toLocaleTimeString()}</div>
+    </div>`;
+    container.appendChild(el);
+  });
+  container.scrollTop = container.scrollHeight;
+}
+
+async function sendMsg() {
+  const { matchId, user: u } = S.activeModal;
+  if (!matchId) return;
+  const input = document.getElementById('modal-msg-input');
+  const content = input.value.trim();
+  if (!content) return;
+  const token = S.tokens[u];
+  const { ok, data } = await api('POST', `/api/v1/matches/${matchId}/messages`, {
+    token,
+    body: { content, kind: 'text' }
+  });
+  if (!ok) { alert(`Send failed: ${JSON.stringify(data?.detail || data)}`); return; }
+  input.value = '';
+  fetchMessages(u, matchId);
+}
+
+function closeModal() {
+  document.getElementById('msg-modal').classList.add('hidden');
+  S.activeModal = { matchId: null, user: null };
+}
+
+// ── Mutual Like Test ──────────────────────────────────────────────────
+async function mutualLikeTest() {
+  const out = document.getElementById('mutual-result');
+  const intent = document.getElementById('mutual-intent').value;
+
+  if (!S.tokens.a || !S.tokens.b) { out.textContent = '✗ Need tokens for both User A and User B'; return; }
+  if (!S.profiles.a || !S.profiles.b) { out.textContent = '✗ Load profiles for both users first (click "Load My Profile")'; return; }
+
+  const idA = S.profiles.a.id, idB = S.profiles.b.id;
+  out.textContent = `▶ A (${idA.slice(0,8)}…) likes B (${idB.slice(0,8)}…)…\n`;
+
+  // Step 1: A likes B
+  const { ok: ok1, data: d1 } = await api('POST', '/api/v1/likes', {
+    token: S.tokens.a,
+    body: { likee_id: idB, intents: [intent] }
+  });
+  if (!ok1) { out.textContent += `✗ A→B like failed: ${JSON.stringify(d1?.detail || d1)}`; return; }
+  out.textContent += `✓ A liked B. Match so far: ${d1.match ? '🎉 ' + d1.match.id : 'none'}\n`;
+
+  // Step 2: B likes A
+  out.textContent += `▶ B (${idB.slice(0,8)}…) likes A (${idA.slice(0,8)}…)…\n`;
+  const { ok: ok2, data: d2 } = await api('POST', '/api/v1/likes', {
+    token: S.tokens.b,
+    body: { likee_id: idA, intents: [intent] }
+  });
+  if (!ok2) {
+    const msg = d2?.detail?.message || JSON.stringify(d2?.detail || d2);
+    out.textContent += `✗ B→A like failed: ${msg}`;
+    return;
+  }
+
+  if (d2.match) {
+    out.textContent += `✓ B liked A.\n\n🎉 MATCH CREATED!\n  ID: ${d2.match.id}\n  Status: ${d2.match.status}\n  Intents: ${(d2.match.shared_intents||[]).join(', ')}`;
+    loadMatches('a');
+    loadMatches('b');
+  } else {
+    out.textContent += `✓ B liked A. No match created (check intent overlap or trigger).`;
+  }
+}
+
+// ── Custom Request ─────────────────────────────────────────────────────
+async function sendCustom() {
+  const method = document.getElementById('req-method').value;
+  const path   = document.getElementById('req-path').value;
+  const user   = document.getElementById('req-user').value;
+  const token  = user ? S.tokens[user] : '';
+  let body;
+  const rawBody = document.getElementById('req-body').value.trim();
+  if (rawBody) {
+    try { body = JSON.parse(rawBody); }
+    catch { alert('Body is not valid JSON'); return; }
+  }
+  const { ok, status, data } = await api(method, path, { token, body });
+  document.getElementById('req-response').textContent = JSON.stringify(data, null, 2);
+  document.getElementById('req-response').className = ok ? 'text-green-300 text-[11px]' : 'text-red-300 text-[11px]';
+}
+
+// ── Interests ──────────────────────────────────────────────────────────
+async function loadInterests() {
+  const token = S.tokens.a || S.tokens.b;
+  if (!token) { alert('Set at least one token first'); return; }
+  const { ok, data } = await api('GET', '/api/v1/interests', { token });
+  const el = document.getElementById('interests-list');
+  if (!ok) { el.innerHTML = `<span class="text-red-400 text-xs">${JSON.stringify(data)}</span>`; return; }
+  el.innerHTML = (data || []).map(i =>
+    `<span class="tag cursor-default" title="${i.category}">${i.name}</span>`
+  ).join('');
+}
+
+// ── Init ───────────────────────────────────────────────────────────────
+checkHealth();
+// Pre-fill paths for quick access
+document.getElementById('req-path').value = '/api/v1/me';
+</script>
+</body>
+</html>

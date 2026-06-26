@@ -1,0 +1,27 @@
+{
+  "name": "tfn-complete-backend",
+  "private": true,
+  "packageManager": "pnpm@9.15.4",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @tfn/api dev",
+    "dev:worker": "pnpm --filter @tfn/api worker:dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "db:generate": "pnpm --filter @tfn/db db:generate",
+    "db:migrate": "pnpm --filter @tfn/db db:migrate",
+    "db:seed": "pnpm --filter @tfn/db db:seed"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.14",
+    "drizzle-kit": "^0.31.10",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
+  }
+}
