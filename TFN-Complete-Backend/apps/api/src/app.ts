@@ -13,6 +13,7 @@ import { matchesRoutes } from "./routes/matches.js";
 import { messagesRoutes } from "./routes/messages.js";
 import { notificationsRoutes } from "./routes/notifications.js";
 import { projectsRoutes } from "./routes/projects.js";
+import { searchRoutes } from "./routes/search.js";
 import { startupsRoutes } from "./routes/startups.js";
 
 export async function buildApp() {
@@ -33,6 +34,7 @@ export async function buildApp() {
   await app.register(notificationsRoutes, { prefix: "/notifications" });
   await app.register(analyticsRoutes, { prefix: "/analytics" });
   await app.register(dashboardRoutes, { prefix: "/dashboard" });
+  await app.register(searchRoutes, { prefix: "/search" });
   await app.register(filesRoutes, { prefix: "/files" });
   await app.register(billingRoutes, { prefix: "/billing" });
 

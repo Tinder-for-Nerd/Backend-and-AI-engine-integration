@@ -7,6 +7,7 @@ import {
   portfolioQualityScores,
   projectRequirementAnalyses,
   projects,
+  startups,
   type DbClient,
 } from "@tfn/db";
 
@@ -15,13 +16,17 @@ import { createEmbedding } from "./qwen.service.js";
 import {
   buildFreelancerProfileBlob,
   buildPortfolioAnalysisBlob,
+  buildPortfolioSearchBlob,
   buildProjectRequirementBlob,
+  buildStartupSearchBlob,
   createSourceHash,
 } from "./text-blobs.service.js";
 import {
+  deleteGlobalSearchVector,
   deleteProfileVector,
   deleteProjectVector,
   upsertProfileVector,
+  upsertGlobalSearchVector,
   upsertProjectVector,
 } from "./vector-store.service.js";
 import { analyzeRequirementText } from "./nlp-extraction.service.js";
@@ -159,6 +164,21 @@ export async function upsertFreelancerEmbedding(db: DbClient, freelancerId: stri
     await markEmbeddingPending(db, "freelancer", freelancerId, sourceHash);
     const embedding = await createEmbedding(document);
     const vectorId = await upsertProfileVector({ freelancerId, embedding, document, sourceHash });
+    await upsertGlobalSearchVector({
+      entityType: "freelancer",
+      entityId: freelancerId,
+      embedding,
+      document,
+      sourceHash,
+      metadata: {
+        title: freelancer.title,
+        availability: freelancer.availability,
+        location: freelancer.location,
+        skills: freelancer.skills.join(", "),
+        hourlyRateCents: freelancer.hourlyRateCents,
+      },
+    });
+    await upsertPortfolioGlobalVectors({ freelancer, portfolioItems: items });
     return markEmbeddingEmbedded(db, {
       ownerType: "freelancer",
       ownerId: freelancerId,
@@ -194,6 +214,20 @@ export async function upsertProjectEmbedding(db: DbClient, projectId: string, fo
     await markEmbeddingPending(db, "project", projectId, sourceHash);
     const embedding = await createEmbedding(document);
     const vectorId = await upsertProjectVector({ projectId, embedding, document, sourceHash });
+    await upsertGlobalSearchVector({
+      entityType: "project",
+      entityId: projectId,
+      embedding,
+      document,
+      sourceHash,
+      metadata: {
+        title: project.title,
+        status: project.status,
+        skills: project.requiredSkills.join(", "),
+        budgetMinCents: project.budgetMinCents,
+        budgetMaxCents: project.budgetMaxCents,
+      },
+    });
     return markEmbeddingEmbedded(db, {
       ownerType: "project",
       ownerId: projectId,
@@ -208,8 +242,50 @@ export async function upsertProjectEmbedding(db: DbClient, projectId: string, fo
   }
 }
 
+export async function upsertStartupEmbedding(db: DbClient, startupId: string, force = false) {
+  const [startup] = await db.select().from(startups).where(eq(startups.id, startupId)).limit(1);
+  if (!startup) return null;
+
+  const document = buildStartupSearchBlob({ startup });
+  const sourceHash = createSourceHash(document);
+  const existing = await findEmbeddingRecord(db, "startup", startupId);
+
+  if (!force && existing?.sourceHash === sourceHash && existing.status === "embedded") {
+    return existing;
+  }
+
+  try {
+    await markEmbeddingPending(db, "startup", startupId, sourceHash);
+    const embedding = await createEmbedding(document);
+    const vectorId = await upsertGlobalSearchVector({
+      entityType: "startup",
+      entityId: startupId,
+      embedding,
+      document,
+      sourceHash,
+      metadata: {
+        title: startup.companyName,
+        industry: startup.industry,
+        companySize: startup.companySize,
+      },
+    });
+    return markEmbeddingEmbedded(db, {
+      ownerType: "startup",
+      ownerId: startupId,
+      vectorId,
+      collection: env.CHROMA_GLOBAL_COLLECTION,
+      sourceHash,
+      dimensions: embedding.length,
+    });
+  } catch (error) {
+    await markEmbeddingFailed(db, "startup", startupId, sourceHash, error);
+    throw error;
+  }
+}
+
 export async function removeProjectEmbedding(db: DbClient, projectId: string) {
   await deleteProjectVector(projectId).catch(() => undefined);
+  await deleteGlobalSearchVector("project", projectId).catch(() => undefined);
   await db
     .delete(aiEmbeddingRecords)
     .where(and(eq(aiEmbeddingRecords.ownerType, "project"), eq(aiEmbeddingRecords.ownerId, projectId)));
@@ -217,6 +293,7 @@ export async function removeProjectEmbedding(db: DbClient, projectId: string) {
 
 export async function removeFreelancerEmbedding(db: DbClient, freelancerId: string) {
   await deleteProfileVector(freelancerId).catch(() => undefined);
+  await deleteGlobalSearchVector("freelancer", freelancerId).catch(() => undefined);
   await db
     .delete(aiEmbeddingRecords)
     .where(and(eq(aiEmbeddingRecords.ownerType, "freelancer"), eq(aiEmbeddingRecords.ownerId, freelancerId)));
@@ -226,7 +303,9 @@ export async function listFreelancersForBatchEmbedding(db: DbClient, limit: numb
   return db.select().from(freelancers).limit(limit);
 }
 
-async function findEmbeddingRecord(db: DbClient, ownerType: "freelancer" | "project", ownerId: string) {
+type EmbeddingOwnerType = "freelancer" | "project" | "startup";
+
+async function findEmbeddingRecord(db: DbClient, ownerType: EmbeddingOwnerType, ownerId: string) {
   const [record] = await db
     .select()
     .from(aiEmbeddingRecords)
@@ -235,15 +314,15 @@ async function findEmbeddingRecord(db: DbClient, ownerType: "freelancer" | "proj
   return record ?? null;
 }
 
-async function markEmbeddingPending(db: DbClient, ownerType: "freelancer" | "project", ownerId: string, sourceHash: string) {
+async function markEmbeddingPending(db: DbClient, ownerType: EmbeddingOwnerType, ownerId: string, sourceHash: string) {
   await db
     .insert(aiEmbeddingRecords)
     .values({
       ownerType,
       ownerId,
       vectorId: `${ownerType}:${ownerId}`,
-      collection: ownerType === "freelancer" ? env.CHROMA_PROFILE_COLLECTION : env.CHROMA_PROJECT_COLLECTION,
-      model: env.QWEN_EMBEDDING_MODEL,
+      collection: collectionForOwner(ownerType),
+      model: activeEmbeddingModel(),
       sourceHash,
       status: "pending",
     })
@@ -261,7 +340,7 @@ async function markEmbeddingPending(db: DbClient, ownerType: "freelancer" | "pro
 async function markEmbeddingEmbedded(
   db: DbClient,
   input: {
-    ownerType: "freelancer" | "project";
+    ownerType: EmbeddingOwnerType;
     ownerId: string;
     vectorId: string;
     collection: string;
@@ -273,7 +352,7 @@ async function markEmbeddingEmbedded(
     .insert(aiEmbeddingRecords)
     .values({
       ...input,
-      model: env.QWEN_EMBEDDING_MODEL,
+      model: activeEmbeddingModel(),
       status: "embedded",
       embeddedAt: new Date(),
     })
@@ -282,7 +361,7 @@ async function markEmbeddingEmbedded(
       set: {
         vectorId: input.vectorId,
         collection: input.collection,
-        model: env.QWEN_EMBEDDING_MODEL,
+        model: activeEmbeddingModel(),
         sourceHash: input.sourceHash,
         dimensions: input.dimensions,
         status: "embedded",
@@ -297,7 +376,7 @@ async function markEmbeddingEmbedded(
 
 async function markEmbeddingFailed(
   db: DbClient,
-  ownerType: "freelancer" | "project",
+  ownerType: EmbeddingOwnerType,
   ownerId: string,
   sourceHash: string,
   error: unknown,
@@ -309,8 +388,8 @@ async function markEmbeddingFailed(
       ownerType,
       ownerId,
       vectorId: `${ownerType}:${ownerId}`,
-      collection: ownerType === "freelancer" ? env.CHROMA_PROFILE_COLLECTION : env.CHROMA_PROJECT_COLLECTION,
-      model: env.QWEN_EMBEDDING_MODEL,
+      collection: collectionForOwner(ownerType),
+      model: activeEmbeddingModel(),
       sourceHash,
       status: "failed",
       error: message.slice(0, 1000),
@@ -324,6 +403,38 @@ async function markEmbeddingFailed(
         updatedAt: new Date(),
       },
     });
+}
+
+async function upsertPortfolioGlobalVectors(input: { freelancer: typeof freelancers.$inferSelect; portfolioItems: Array<typeof portfolioItems.$inferSelect> }) {
+  await Promise.all(
+    input.portfolioItems.map(async (portfolioItem) => {
+      const document = buildPortfolioSearchBlob({ portfolioItem, freelancer: input.freelancer });
+      const sourceHash = createSourceHash(document);
+      const embedding = await createEmbedding(document);
+      await upsertGlobalSearchVector({
+        entityType: "portfolio",
+        entityId: portfolioItem.id,
+        embedding,
+        document,
+        sourceHash,
+        metadata: {
+          title: portfolioItem.title,
+          freelancerId: input.freelancer.id,
+          freelancerTitle: input.freelancer.title,
+        },
+      });
+    }),
+  );
+}
+
+function collectionForOwner(ownerType: EmbeddingOwnerType) {
+  if (ownerType === "freelancer") return env.CHROMA_PROFILE_COLLECTION;
+  if (ownerType === "project") return env.CHROMA_PROJECT_COLLECTION;
+  return env.CHROMA_GLOBAL_COLLECTION;
+}
+
+function activeEmbeddingModel() {
+  return env.AI_PROVIDER === "ollama" ? env.OLLAMA_EMBEDDING_MODEL : env.QWEN_EMBEDDING_MODEL;
 }
 
 function normalizeSkills(skills: string[]) {

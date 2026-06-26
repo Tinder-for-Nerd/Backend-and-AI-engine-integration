@@ -63,6 +63,7 @@ const envSchema = z.object({
   CHROMA_URL: z.string().url().default("http://localhost:8000"),
   CHROMA_PROFILE_COLLECTION: z.string().default("tfn_freelancer_profiles"),
   CHROMA_PROJECT_COLLECTION: z.string().default("tfn_project_requirements"),
+  CHROMA_GLOBAL_COLLECTION: z.string().default("tfn_global_search"),
   EMBEDDING_DEBOUNCE_MS: z.coerce.number().int().nonnegative().default(300_000),
   MATCH_EXPLANATION_TTL_SECONDS: z.coerce.number().int().positive().default(86_400),
   MATCH_FEED_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(120),

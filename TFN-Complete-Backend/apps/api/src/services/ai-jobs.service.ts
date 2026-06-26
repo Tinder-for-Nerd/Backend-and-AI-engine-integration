@@ -36,6 +36,15 @@ export async function enqueueProjectAiRefresh(app: FastifyInstance, projectId: s
   );
 }
 
+export async function enqueueStartupAiRefresh(app: FastifyInstance, startupId: string, force = false) {
+  await addDebouncedJob(
+    app.queues.embedding,
+    "startup_embedding",
+    { ownerType: "startup", ownerId: startupId, force },
+    { jobId: `embedding-startup-${startupId}`, delay: env.EMBEDDING_DEBOUNCE_MS },
+  );
+}
+
 export async function enqueueBatchFreelancerEmbedding(app: FastifyInstance, limit = 100, force = false) {
   await app.queues.batchEmbedding.add("batch_freelancer_embedding", { limit, force }, { jobId: `batch-freelancers-${Date.now()}` });
 }

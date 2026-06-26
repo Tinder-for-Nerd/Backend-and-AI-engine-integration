@@ -6,10 +6,12 @@ import type {
   portfolioQualityScores,
   projectRequirementAnalyses,
   projects,
+  startups,
 } from "@tfn/db";
 
 type Freelancer = typeof freelancers.$inferSelect;
 type Project = typeof projects.$inferSelect;
+type Startup = typeof startups.$inferSelect;
 type PortfolioItem = typeof portfolioItems.$inferSelect;
 type RequirementAnalysis = typeof projectRequirementAnalyses.$inferSelect;
 type PortfolioQualityScore = typeof portfolioQualityScores.$inferSelect;
@@ -84,5 +86,28 @@ export function buildPortfolioAnalysisBlob(input: {
     input.portfolioItems
       .map((item) => compactLines([`Portfolio: ${item.title}`, item.description, item.url ? `URL: ${item.url}` : undefined]))
       .join("\n\n"),
+  ]);
+}
+
+export function buildStartupSearchBlob(input: { startup: Startup }) {
+  return compactLines([
+    `Startup: ${input.startup.companyName}`,
+    input.startup.description ? `Description: ${input.startup.description}` : undefined,
+    input.startup.industry ? `Industry: ${input.startup.industry}` : undefined,
+    input.startup.companySize ? `Company size: ${input.startup.companySize}` : undefined,
+    input.startup.website ? `Website: ${input.startup.website}` : undefined,
+  ]);
+}
+
+export function buildPortfolioSearchBlob(input: {
+  portfolioItem: PortfolioItem;
+  freelancer?: Freelancer | null | undefined;
+}) {
+  return compactLines([
+    `Portfolio: ${input.portfolioItem.title}`,
+    input.portfolioItem.description ? `Description: ${input.portfolioItem.description}` : undefined,
+    input.portfolioItem.url ? `URL: ${input.portfolioItem.url}` : undefined,
+    input.freelancer?.title ? `Freelancer title: ${input.freelancer.title}` : undefined,
+    input.freelancer?.skills.length ? `Freelancer skills: ${input.freelancer.skills.join(", ")}` : undefined,
   ]);
 }

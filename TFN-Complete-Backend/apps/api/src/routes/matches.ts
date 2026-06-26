@@ -1,17 +1,16 @@
-import { desc, eq, inArray } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 
 import { requireRole } from "@tfn/auth";
-import { freelancers, matchSignals, portfolioQualityScores, projects, startups } from "@tfn/db";
+import { matchSignals, projects, startups } from "@tfn/db";
 import { matchSignalSchema } from "@tfn/shared";
 
 import { env } from "../config/env.js";
 import { enqueueBatchFreelancerEmbedding } from "../services/ai-jobs.service.js";
+import { findHybridFreelancerCandidatesForProject } from "../services/hybrid-search.service.js";
 import { getMatchExplanation } from "../services/match-explanations.service.js";
-import { computeFitScore } from "../services/matching.js";
 import { rerankWithSignals } from "../services/reranker.service.js";
-import { searchFreelancersForProject } from "../services/semantic-search.service.js";
 import { parseBody, parseQuery } from "../utils/validation.js";
 
 export async function matchesRoutes(app: FastifyInstance) {
@@ -39,7 +38,11 @@ export async function matchesRoutes(app: FastifyInstance) {
       return { project: null, items: [] };
     }
 
-    const candidates = await findCandidateMatches(app, project.id, query.limit);
+    const candidates = await findHybridFreelancerCandidatesForProject({
+      db: app.db,
+      project,
+      limit: Math.max(query.limit * 3, 30),
+    });
     const signals = await app.db.select().from(matchSignals).where(eq(matchSignals.userId, request.user!.id)).limit(500);
     const items = rerankWithSignals(
       candidates.map((candidate) => ({
@@ -110,67 +113,4 @@ async function findLatestProjectForStartup(app: FastifyInstance, userId: string)
     .orderBy(desc(projects.createdAt))
     .limit(1);
   return project ?? null;
-}
-
-async function findCandidateMatches(app: FastifyInstance, projectId: string, limit: number) {
-  try {
-    const semantic = await searchFreelancersForProject({ db: app.db, projectId, limit: Math.max(limit * 4, 50) });
-    if (!semantic.project || !semantic.results.length) {
-      return fallbackCandidateMatches(app, semantic.project, limit);
-    }
-
-    const ids = semantic.results
-      .map((result) => result.metadata.freelancerId)
-      .filter((id): id is string => typeof id === "string");
-    if (!ids.length) {
-      return fallbackCandidateMatches(app, semantic.project, limit);
-    }
-
-    const rows = await app.db.select().from(freelancers).where(inArray(freelancers.id, ids));
-    const byId = new Map(rows.map((freelancer) => [freelancer.id, freelancer]));
-    const qualities = await app.db
-      .select()
-      .from(portfolioQualityScores)
-      .where(inArray(portfolioQualityScores.freelancerId, ids));
-    const qualityByFreelancer = new Map(qualities.map((quality) => [quality.freelancerId, quality]));
-
-    return semantic.results
-      .map((result) => {
-        const freelancerId = typeof result.metadata.freelancerId === "string" ? result.metadata.freelancerId : "";
-        const freelancer = byId.get(freelancerId);
-        if (!freelancer || !semantic.project) return null;
-        const quality = qualityByFreelancer.get(freelancer.id);
-        return {
-          freelancer,
-          fit: computeFitScore(semantic.project, freelancer, {
-            semanticScore: result.score,
-            portfolioQualityScore: quality?.score,
-          }),
-          vector: {
-            id: result.id,
-            score: result.score,
-            sourceHash: result.metadata.sourceHash,
-          },
-        };
-      })
-      .filter((item): item is NonNullable<typeof item> => Boolean(item))
-      .sort((a, b) => b.fit.score - a.fit.score)
-      .slice(0, limit);
-  } catch {
-    const [project] = await app.db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
-    return fallbackCandidateMatches(app, project ?? null, limit);
-  }
-}
-
-async function fallbackCandidateMatches(app: FastifyInstance, project: typeof projects.$inferSelect | null, limit: number) {
-  if (!project) return [];
-  const candidates = await app.db.select().from(freelancers).limit(200);
-  return candidates
-    .map((freelancer) => ({
-      freelancer,
-      fit: computeFitScore(project, freelancer),
-      vector: null,
-    }))
-    .sort((a, b) => b.fit.score - a.fit.score)
-    .slice(0, limit);
 }

@@ -5,6 +5,7 @@ import { startups } from "@tfn/db";
 import { requireRole } from "@tfn/auth";
 import { idParamSchema, startupProfileSchema } from "@tfn/shared";
 
+import { enqueueStartupAiRefresh } from "../services/ai-jobs.service.js";
 import { parseBody, parseParams } from "../utils/validation.js";
 
 export async function startupsRoutes(app: FastifyInstance) {
@@ -42,6 +43,10 @@ export async function startupsRoutes(app: FastifyInstance) {
         },
       })
       .returning();
+    if (!profile) {
+      throw new Error("startup_profile_upsert_failed");
+    }
+    await enqueueStartupAiRefresh(app, profile.id);
     return profile;
   });
 

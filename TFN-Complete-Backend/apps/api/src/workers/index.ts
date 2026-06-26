@@ -25,6 +25,7 @@ import {
   listFreelancersForBatchEmbedding,
   upsertFreelancerEmbedding,
   upsertProjectEmbedding,
+  upsertStartupEmbedding,
 } from "../services/ai-indexing.service.js";
 
 const connection = createRedisConnection(env.REDIS_URL);
@@ -111,6 +112,10 @@ createWorker<EmbeddingJob>(
   async (job) => {
     if (job.data.ownerType === "freelancer") {
       await upsertFreelancerEmbedding(db, job.data.ownerId, job.data.force);
+      return;
+    }
+    if (job.data.ownerType === "startup") {
+      await upsertStartupEmbedding(db, job.data.ownerId, job.data.force);
       return;
     }
     await upsertProjectEmbedding(db, job.data.ownerId, job.data.force);

@@ -42,7 +42,7 @@ export interface MatchRecomputeJob {
 }
 
 export interface EmbeddingJob {
-  ownerType: "freelancer" | "project";
+  ownerType: "freelancer" | "project" | "startup";
   ownerId: string;
   force?: boolean;
 }
