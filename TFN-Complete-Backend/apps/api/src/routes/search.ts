@@ -79,8 +79,10 @@ function parseFilters(raw: string | undefined): SearchFilters | undefined {
 
 const filtersSchema = z.object({
   availability: z.enum(["available", "limited", "unavailable"]).optional(),
+  personName: z.string().max(160).optional(),
   location: z.string().max(160).optional(),
   skills: z.array(z.string().min(1).max(80)).max(20).optional(),
+  skillMatchMode: z.enum(["any", "all"]).optional(),
   status: z.string().max(40).optional(),
   minBudgetCents: z.number().int().min(0).optional(),
   maxBudgetCents: z.number().int().min(0).optional(),

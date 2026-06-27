@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { computeWeightedLexicalScore, mergeSearchCandidates, tokenize, type HybridSearchCandidate } from "./hybrid-search.service.js";
+import {
+  computeWeightedLexicalScore,
+  matchesSkillFilter,
+  mergeSearchCandidates,
+  tokenize,
+  type HybridSearchCandidate,
+} from "./hybrid-search.service.js";
 
 describe("hybrid search helpers", () => {
   it("scores weighted lexical matches across important fields", () => {
@@ -40,5 +46,13 @@ describe("hybrid search helpers", () => {
     expect(merged[0]!.scores.lexical).toBe(0.7);
     expect(merged[0]!.scores.semantic).toBe(0.9);
     expect(merged[0]!.reasonCodes).toEqual(expect.arrayContaining(["keyword_match", "semantic_match"]));
+  });
+
+  it("supports strict all-skills targeting for specific-person searches", () => {
+    const candidateSkills = ["React", "Node.js", "PostgreSQL"];
+
+    expect(matchesSkillFilter(candidateSkills, ["React", "PostgreSQL"], "all")).toBe(true);
+    expect(matchesSkillFilter(candidateSkills, ["React", "Python"], "all")).toBe(false);
+    expect(matchesSkillFilter(candidateSkills, ["Python", "Node.js"], "any")).toBe(true);
   });
 });

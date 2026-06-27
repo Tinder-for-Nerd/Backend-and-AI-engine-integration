@@ -8,6 +8,7 @@ import {
   projectRequirementAnalyses,
   projects,
   startups,
+  users,
   type DbClient,
 } from "@tfn/db";
 
@@ -145,6 +146,7 @@ export async function analyzeAndPersistPortfolio(db: DbClient, freelancerId: str
 export async function upsertFreelancerEmbedding(db: DbClient, freelancerId: string, force = false) {
   const [freelancer] = await db.select().from(freelancers).where(eq(freelancers.id, freelancerId)).limit(1);
   if (!freelancer) return null;
+  const [user] = await db.select().from(users).where(eq(users.id, freelancer.userId)).limit(1);
 
   const [portfolioQuality] = await db
     .select()
@@ -152,7 +154,7 @@ export async function upsertFreelancerEmbedding(db: DbClient, freelancerId: stri
     .where(eq(portfolioQualityScores.freelancerId, freelancerId))
     .limit(1);
   const items = await db.select().from(portfolioItems).where(eq(portfolioItems.freelancerId, freelancerId));
-  const document = buildFreelancerProfileBlob({ freelancer, portfolioItems: items, portfolioQuality });
+  const document = buildFreelancerProfileBlob({ freelancer, userName: user?.name, portfolioItems: items, portfolioQuality });
   const sourceHash = createSourceHash(document);
   const existing = await findEmbeddingRecord(db, "freelancer", freelancerId);
 
@@ -171,7 +173,8 @@ export async function upsertFreelancerEmbedding(db: DbClient, freelancerId: stri
       document,
       sourceHash,
       metadata: {
-        title: freelancer.title,
+        title: user?.name ? `${user.name} - ${freelancer.title ?? "Freelancer"}` : freelancer.title,
+        personName: user?.name,
         availability: freelancer.availability,
         location: freelancer.location,
         skills: freelancer.skills.join(", "),

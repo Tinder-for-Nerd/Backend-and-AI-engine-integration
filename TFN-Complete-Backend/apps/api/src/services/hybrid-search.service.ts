@@ -1,6 +1,6 @@
 import { desc, eq, ilike, inArray, or } from "drizzle-orm";
 
-import { freelancers, portfolioItems, portfolioQualityScores, projects, startups, type DbClient } from "@tfn/db";
+import { freelancers, portfolioItems, portfolioQualityScores, projects, startups, users, type DbClient } from "@tfn/db";
 
 import { computeFitScore } from "./matching.js";
 import { createEmbedding } from "./qwen.service.js";
@@ -11,8 +11,10 @@ export type SearchEntityType = "freelancer" | "project" | "startup" | "portfolio
 
 export interface SearchFilters {
   availability?: "available" | "limited" | "unavailable" | undefined;
+  personName?: string | undefined;
   location?: string | undefined;
   skills?: string[] | undefined;
+  skillMatchMode?: "any" | "all" | undefined;
   status?: string | undefined;
   minBudgetCents?: number | undefined;
   maxBudgetCents?: number | undefined;
@@ -170,6 +172,14 @@ export function mergeSearchCandidates(candidates: HybridSearchCandidate[]) {
   return [...byKey.values()].sort((a, b) => b.scores.final - a.scores.final);
 }
 
+export function matchesSkillFilter(candidateSkills: string[], requestedSkills: string[] | undefined, mode: "any" | "all" = "any") {
+  if (!requestedSkills?.length) return true;
+  const normalizedCandidateSkills = new Set(candidateSkills.map((skill) => normalizeQuery(skill)));
+  const normalizedRequestedSkills = requestedSkills.map((skill) => normalizeQuery(skill));
+  const matches = normalizedRequestedSkills.filter((skill) => normalizedCandidateSkills.has(skill));
+  return mode === "all" ? matches.length === normalizedRequestedSkills.length : matches.length > 0;
+}
+
 async function lexicalGlobalSearch(
   db: DbClient,
   input: { query: string; tokens: string[]; types: SearchEntityType[]; filters?: SearchFilters | undefined; limit: number },
@@ -187,36 +197,55 @@ async function lexicalFreelancers(
   input: { query: string; tokens: string[]; filters?: SearchFilters | undefined; limit: number },
 ): Promise<HybridSearchCandidate[]> {
   const rows = await db
-    .select()
+    .select({
+      freelancer: freelancers,
+      user: users,
+    })
     .from(freelancers)
+    .leftJoin(users, eq(users.id, freelancers.userId))
     .where(
       input.query
-        ? or(ilike(freelancers.title, `%${input.query}%`), ilike(freelancers.bio, `%${input.query}%`), ilike(freelancers.location, `%${input.query}%`))
+        ? or(
+            ilike(users.name, `%${input.query}%`),
+            ilike(freelancers.title, `%${input.query}%`),
+            ilike(freelancers.bio, `%${input.query}%`),
+            ilike(freelancers.location, `%${input.query}%`),
+          )
         : undefined,
     )
     .orderBy(desc(freelancers.updatedAt))
     .limit(input.limit);
 
   return rows
-    .filter((freelancer) => passesFreelancerFilters(freelancer, input.filters))
-    .map((freelancer) => {
+    .filter(({ freelancer, user }) => passesFreelancerFilters(freelancer, input.filters, user?.name))
+    .map(({ freelancer, user }) => {
       const lexical = scoreFreelancerForTokens(freelancer, input.tokens);
       const business = freelancer.availability === "available" ? 0.8 : freelancer.availability === "limited" ? 0.55 : 0.1;
+      const personTitle = user?.name ? `${user.name} - ${freelancer.title ?? "Freelancer"}` : freelancer.title ?? "Freelancer";
       return {
         id: freelancer.id,
         type: "freelancer" as const,
-        title: freelancer.title ?? "Freelancer",
+        title: personTitle,
         subtitle: [freelancer.location, freelancer.skills.slice(0, 4).join(", ")].filter(Boolean).join(" | "),
         description: freelancer.bio ?? freelancer.portfolioSummary ?? undefined,
-        entity: freelancer,
+        entity: { ...freelancer, userName: user?.name ?? null },
         scores: {
           lexical,
           semantic: 0,
           business,
           final: finalSearchScore(lexical, 0, business),
         },
-        reasonCodes: reasonCodesForGlobal({ lexical, semantic: 0, business, extra: freelancer.availability === "available" ? ["available_now"] : [] }),
-        highlights: buildHighlights(input.tokens, [freelancer.title, freelancer.bio, freelancer.location, freelancer.skills.join(", ")]),
+        reasonCodes: reasonCodesForGlobal({
+          lexical,
+          semantic: 0,
+          business,
+          extra: [
+            ...(freelancer.availability === "available" ? ["available_now"] : []),
+            ...(input.filters?.personName && user?.name ? ["person_name_match"] : []),
+            ...(input.filters?.skillMatchMode === "all" && input.filters.skills?.length ? ["all_required_skills"] : []),
+          ],
+        }),
+        highlights: buildHighlights(input.tokens, [user?.name, freelancer.title, freelancer.bio, freelancer.location, freelancer.skills.join(", ")]),
       };
     })
     .filter((item) => item.scores.final > 0 || !input.query);
@@ -401,12 +430,12 @@ function scoreFreelancerForTokens(freelancer: typeof freelancers.$inferSelect, t
   ]);
 }
 
-function passesFreelancerFilters(freelancer: typeof freelancers.$inferSelect, filters?: SearchFilters) {
+function passesFreelancerFilters(freelancer: typeof freelancers.$inferSelect, filters?: SearchFilters, userName?: string | null | undefined) {
+  if (filters?.personName && !normalizeQuery(userName ?? "").includes(normalizeQuery(filters.personName))) return false;
   if (filters?.availability && freelancer.availability !== filters.availability) return false;
   if (filters?.location && !normalizeQuery(freelancer.location ?? "").includes(normalizeQuery(filters.location))) return false;
   if (filters?.skills?.length) {
-    const freelancerSkills = new Set(freelancer.skills.map((skill) => normalizeQuery(skill)));
-    if (!filters.skills.some((skill) => freelancerSkills.has(normalizeQuery(skill)))) return false;
+    if (!matchesSkillFilter(freelancer.skills, filters.skills, filters.skillMatchMode ?? "any")) return false;
   }
   if (filters?.minRateCents && (freelancer.hourlyRateCents ?? 0) < filters.minRateCents) return false;
   if (filters?.maxRateCents && (freelancer.hourlyRateCents ?? Number.POSITIVE_INFINITY) > filters.maxRateCents) return false;
@@ -418,8 +447,7 @@ function passesProjectFilters(project: typeof projects.$inferSelect, filters?: S
   if (filters?.minBudgetCents && (project.budgetMaxCents ?? 0) < filters.minBudgetCents) return false;
   if (filters?.maxBudgetCents && (project.budgetMinCents ?? Number.POSITIVE_INFINITY) > filters.maxBudgetCents) return false;
   if (filters?.skills?.length) {
-    const requiredSkills = new Set(project.requiredSkills.map((skill) => normalizeQuery(skill)));
-    if (!filters.skills.some((skill) => requiredSkills.has(normalizeQuery(skill)))) return false;
+    if (!matchesSkillFilter(project.requiredSkills, filters.skills, filters.skillMatchMode ?? "any")) return false;
   }
   return true;
 }

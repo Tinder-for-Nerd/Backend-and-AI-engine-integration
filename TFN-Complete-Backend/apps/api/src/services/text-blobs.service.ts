@@ -29,6 +29,7 @@ function compactLines(lines: Array<string | null | undefined>) {
 
 export function buildFreelancerProfileBlob(input: {
   freelancer: Freelancer;
+  userName?: string | null | undefined;
   portfolioItems?: PortfolioItem[] | undefined;
   portfolioQuality?: PortfolioQualityScore | null | undefined;
 }) {
@@ -39,6 +40,7 @@ export function buildFreelancerProfileBlob(input: {
     : "";
 
   return compactLines([
+    input.userName ? `Person name: ${input.userName}` : undefined,
     `Freelancer title: ${input.freelancer.title ?? "Not provided"}`,
     input.freelancer.bio ? `Bio: ${input.freelancer.bio}` : undefined,
     input.freelancer.location ? `Location: ${input.freelancer.location}` : undefined,
